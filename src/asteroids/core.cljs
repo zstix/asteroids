@@ -65,6 +65,13 @@
       (do (run! #(.lineTo ctx (:x %) (:y %)) points))
       (.stroke))))
 
+(defn draw-game [{:keys [ctx hero asteroids world] :as state}]
+  (do
+    (.clearRect ctx 0 0 (:width world) (:height world))
+    (draw-entity ctx hero)
+    (run! #(draw-entity ctx %) asteroids)
+    state))
+
 ;; -------------------------
 ;; Game logic
 
@@ -77,13 +84,6 @@
                 (deg-to-rad %)
                 (rand-from (- size 5) (+ size 15)))
              (range 0 360 (/ 360 7)))})
-
-(defn draw-game [{:keys [ctx hero asteroids world] :as state}]
-  (do
-    (.clearRect ctx 0 0 (:width world) (:height world))
-    (draw-entity ctx hero)
-    (run! #(draw-entity ctx %) asteroids)
-    state))
 
 ; TODO: acceleration
 (defn update-entity [{:keys [pos] :as entity}]
@@ -113,7 +113,7 @@
 ;         (.requestAnimationFrame js/window game-loop)))))
 
 ;; -------------------------
-;; Starting state
+;; Initialize
 
 (def init-state {:last-frame-ms 0
                  :max-fps 30
@@ -130,9 +130,6 @@
                  :asteroids (map
                               #(generate-asteroid % 200 60)
                               (range 80 700 150))})
-
-;; -------------------------
-;; Initialize app
 
 (defn init [{:keys [ctx world hero asteroids] :as state}]
   (do
