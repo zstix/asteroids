@@ -5,6 +5,12 @@
 (defonce canvas (.getElementById js/document "world"))
 
 ;; -------------------------
+;; General utils
+
+(defn clog [& args]
+  (.log js/console (str args)))
+
+;; -------------------------
 ;; Math utils
 
 (defn deg-to-rad [angle]
