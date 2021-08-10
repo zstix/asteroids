@@ -45,15 +45,9 @@
 ;; -------------------------
 ;; Drawing
 
-(defn generate-asteroid [x y size]
-  {:pos {:x x :y y}
-   :rotation 0
-   :points (map
-             #(point-from-rad
-                {:x x :y y}
-                (deg-to-rad %)
-                (rand-from (- size 5) (+ size 15)))
-             (range 0 360 (/ 360 7)))})
+(defn set-stroke [ctx value]
+  (set! (.-strokeStyle ctx) value)
+  ctx)
 
 (defn draw-circle [ctx pos radius]
   (doto ctx
@@ -64,20 +58,42 @@
 (defn draw-entity [ctx {:keys [pos rotation color] :as e}]
   (let [points (rotate-points pos (:points e) rotation)]
     (doto ctx
-      (do (set! (.-strokeStyle ctx) (or color "white")))
+      (set-stroke (or color "white"))
       (.beginPath)
       (draw-circle pos 2) ; for debugging
       (.moveTo (-> points last :x) (-> points last :y))
-      (do (doseq [p points] (.lineTo ctx (:x p) (:y p))))
+      (do (run! #(.lineTo ctx (:x %) (:y %)) points))
       (.stroke))))
 
 ;; -------------------------
 ;; Game logic
 
-; (defn draw []
-;   (set!
-;     (.-style.left (.getElementById js/document "box"))
-;     (str @pos "px")))
+(defn generate-asteroid [x y size]
+  {:pos {:x x :y y}
+   :rotation 0
+   :points (map
+             #(point-from-rad
+                {:x x :y y}
+                (deg-to-rad %)
+                (rand-from (- size 5) (+ size 15)))
+             (range 0 360 (/ 360 7)))})
+
+(defn draw-game [{:keys [ctx hero asteroids world] :as state}]
+  (do
+    (.clearRect ctx 0 0 (:width world) (:height world))
+    (draw-entity ctx hero)
+    (run! #(draw-entity ctx %) asteroids)
+    state))
+
+; TODO: acceleration
+(defn update-entity [{:keys [pos] :as entity}]
+  (assoc entity :pos {:x (+ (:x pos) (get-in entity [:vel :x] 0))
+                      :y (+ (:y pos) (get-in entity [:vel :y] 0))}))
+
+(defn update-entities [{:keys [hero asteroids] :as state}]
+  (assoc state
+         :hero (update-entity hero)
+         :asteroids (map update-entity asteroids)))
 
 ; (defn update-game []
 ;   (do
@@ -85,7 +101,7 @@
 ;     (if (or (>= @pos limit) (<= @pos 0))
 ;       (reset! vel (* @vel -1)))))
 
-; (defn game-loop [timestamp]
+; (defn loop-game [timestamp]
 ;   (let [{:keys [last-frame-ms max-fps]} @state]
 ;     (if
 ;       (< timestamp (+ last-frame-ms (/ 1000 max-fps)))
@@ -105,6 +121,7 @@
                  :world {:width (.-width canvas)
                          :height (.-height canvas)}
                  :hero {:pos {:x 100 :y 100}
+                        :vel {:x 2 :y 2}
                         :color "lime"
                         :rotation 30
                         :points [{:x (+ 0 100) :y (+ -15 100)}
@@ -117,13 +134,10 @@
 ;; -------------------------
 ;; Initialize app
 
-(defn init [{:keys [ctx world hero asteroids]}]
-  (doto ctx
-    (do (set! (.-strokeStyle ctx) "red"))
-    (do (set! (.-lineWidth ctx) 1))
-    (.clearRect 0 0 (:width world) (:height world))
-    (do (doseq [a asteroids] (draw-entity ctx a)))
-    (draw-entity hero)))
+(defn init [{:keys [ctx world hero asteroids] :as state}]
+  (do
+    (set! (.-lineWidth ctx) 1)
+    (draw-game state)))
 
 ; (defn mount-root []
 ;   (d/render [app] (.getElementById js/document "app")))
