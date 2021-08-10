@@ -26,11 +26,28 @@
   {:x (+ (:x start) (* (Math/cos rad) dist))
    :y (+ (:y start) (* (Math/sin rad) dist))})
 
+(defn rad-from-points [a b]
+  (Math/atan2 (- (:y b) (:y a)) (- (:x b) (:x a))))
+
+(defn dist-from-points [a b]
+  (Math/sqrt
+    (+ (Math/pow (- (:x a) (:x b)) 2)
+       (Math/pow (- (:y a) (:y b)) 2))))
+
+(defn rotate-points [center points deg]
+  (->> points
+       (map (fn [point]
+              (point-from-rad
+                center
+                (+ (rad-from-points center point) (deg-to-rad deg))
+                (dist-from-points center point))))))
+
 ;; -------------------------
 ;; Drawing
 
 (defn generate-asteroid [x y size]
   {:pos {:x x :y y}
+   :rotation 0
    :points (map
              #(point-from-rad
                 {:x x :y y}
@@ -44,14 +61,15 @@
     (.arc (:x pos) (:y pos) radius 0 (* 2 Math/PI))
     (.stroke)))
 
-(defn draw-entity [ctx {:keys [pos points color]}]
-  (doto ctx
-    (do (set! (.-strokeStyle ctx) (or color "white")))
-    ; TODO: rotate
-    (.beginPath)
-    (.moveTo (-> points last :x) (-> points last :y))
-    (do (doseq [p points] (.lineTo ctx (:x p) (:y p))))
-    (.stroke)))
+(defn draw-entity [ctx {:keys [pos rotation color] :as e}]
+  (let [points (rotate-points pos (:points e) rotation)]
+    (doto ctx
+      (do (set! (.-strokeStyle ctx) (or color "white")))
+      (.beginPath)
+      (draw-circle pos 2) ; for debugging
+      (.moveTo (-> points last :x) (-> points last :y))
+      (do (doseq [p points] (.lineTo ctx (:x p) (:y p))))
+      (.stroke))))
 
 ;; -------------------------
 ;; Game logic
@@ -87,9 +105,11 @@
                  :world {:width (.-width canvas)
                          :height (.-height canvas)}
                  :hero {:pos {:x 100 :y 100}
-                        :points [{:x (+ 0 100) :y (+ -10 100)}
-                                 {:x (+ 12 100) :y (+ 20 100)}
-                                 {:x (+ -12 100) :y (+ 20 100)}]}
+                        :color "lime"
+                        :rotation 30
+                        :points [{:x (+ 0 100) :y (+ -15 100)}
+                                 {:x (+ 12 100) :y (+ 15 100)}
+                                 {:x (+ -12 100) :y (+ 15 100)}]}
                  :asteroids (map
                               #(generate-asteroid % 200 60)
                               (range 80 700 150))})
