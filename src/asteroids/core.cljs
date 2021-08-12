@@ -9,45 +9,56 @@
 ;; -------------------------
 ;; Math utils
 
-(defn deg-to-rad [angle]
-  (* angle (/ Math/PI 180)))
-
-(defn rad-to-deg [angle]
-  (/ (* angle 180) Math/PI))
-
-(defn rand-from [a b]
+(defn rand-within [a b]
   (+ a (rand-int (- b a))))
 
-(defn point-from-rad [start rad dist]
+(defn deg->rad [angle]
+  (* angle (/ Math/PI 180)))
+
+(defn rad->deg [angle]
+  (/ (* angle 180) Math/PI))
+
+(defn calculate-point
+  "Given a starting point, an angle (in radians), and a distance (the hypotenuse),
+  this will calculate the adjacent point."
+  [start rad dist]
   {:x (+ (:x start) (* (Math/cos rad) dist))
    :y (+ (:y start) (* (Math/sin rad) dist))})
 
-(defn rad-from-points [a b]
+(defn points->rad [a b]
   (Math/atan2
     (- (:y b) (:y a))
     (- (:x b) (:x a))))
 
-(defn dist-from-points [a b]
+(defn points->dist [a b]
   (Math/sqrt
     (+ (Math/pow (- (:x a) (:x b)) 2)
        (Math/pow (- (:y a) (:y b)) 2))))
 
-(defn position-points [center points deg]
+(defn position-points
+  "Given a center point, a sequence of points (relative to the center point), and
+  an angle (in degrees), this will position and rotate the points accordingly."
+  [center points deg]
+  ;; FIXME: This is adding extra distance from the center. (zs 21-08-12)
   (->> points
        (map #(hash-map :x (+ (:x center) (:x %))
                        :y (+ (:y center) (:y %))))
        (map (fn [point]
-              (point-from-rad
+              (calculate-point
                 center
-                (- (rad-from-points center point) (deg-to-rad deg))
-                (dist-from-points center point))))))
+                (- (points->rad center point) (deg->rad deg))
+                (points->dist center point))))))
 
 ;; -------------------------
 ;; Drawing
 
-(defn set-stroke [ctx value]
-  (set! (.-strokeStyle ctx) value)
-  ctx)
+(defmulti ctx-set! (fn [_ctx prop _value] prop))
+
+(defmethod ctx-set! :stroke-style [ctx _prop value]
+  (set! (.-strokeStyle ctx) value))
+
+(defmethod ctx-set! :line-width [ctx _prop value]
+  (set! (.-lineWidth ctx) value))
 
 (defn draw-circle [ctx pos radius]
   (doto ctx
@@ -55,21 +66,28 @@
     (.arc (:x pos) (:y pos) radius 0 (* 2 Math/PI))
     (.stroke)))
 
+(defn draw-lines [ctx points]
+  (run! #(.lineTo ctx (:x %) (:y %)) points))
+
 (defn draw-entity [ctx {:keys [pos rotation color] :as e}]
   (let [points (position-points pos (:points e) rotation)]
     (doto ctx
-      (set-stroke (or color "white"))
-      (.beginPath)
-      (draw-circle pos 2) ; for debugging
+      (ctx-set! :stroke-style (or color "white"))
+      .beginPath
+      ;; FIXME: Remove after debugging is complete. (zs 21-08-12)
+      (draw-circle pos 2)
       (.moveTo (-> points last :x) (-> points last :y))
-      (do (run! #(.lineTo ctx (:x %) (:y %)) points))
-      (.stroke))))
+      (draw-lines points)
+      .stroke)))
+
+(defn draw-entities [ctx entities]
+  (run! (partial draw-entity ctx) entities))
 
 (defn draw-game [{:keys [ctx hero asteroids world] :as state}]
   (doto ctx
     (.clearRect 0 0 (:width world) (:height world))
     (draw-entity hero)
-    (do (run! #(draw-entity ctx %) asteroids)))
+    (draw-entities asteroids))
   state)
 
 ;; -------------------------
@@ -79,14 +97,14 @@
   {:pos {:x x :y y}
    :rotation 0
    :points (map
-             #(point-from-rad
+             #(calculate-point
                 {:x x :y y}
-                (deg-to-rad %)
-                (rand-from (- size 5) (+ size 15)))
+                (deg->rad %)
+                (rand-within (- size 5) (+ size 15)))
              (range 0 360 (/ 360 7)))})
 
-; TODO: acceleration
 (defn update-entity [{:keys [pos] :as entity}]
+  ;; TODO: Acceleration. (zs 21-08-12)
   (assoc entity :pos {:x (+ (:x pos) (get-in entity [:vel :x] 0))
                       :y (+ (:y pos) (get-in entity [:vel :y] 0))}))
 
@@ -97,6 +115,7 @@
 
 (defn loop-game [{:keys [max-fps last-frame-ms] :as state}]
   (fn [timestamp]
+    ;; HACK: This reads a little messy - consider refactor. (zs 21-08-12)
     (.requestAnimationFrame
       js/window
       (loop-game
@@ -126,14 +145,13 @@
                         :points [{:x (+ 15 100) :y (+ 0 100)}
                                  {:x (+ -15 100) :y (+ 12 100)}
                                  {:x (+ -15 100) :y (+ -12 100)}]}
-                 :asteroids []});(map
-                              ; #(generate-asteroid % 200 60)
-                              ; (range 80 700 150))})
+                 :asteroids (map
+                              #(generate-asteroid % 200 60)
+                              (range 80 700 150))})
 
 (defn init [{:keys [ctx world hero asteroids] :as state}]
-  (do
-    (set! (.-lineWidth ctx) 1)
-    (.requestAnimationFrame js/window (loop-game init-state))))
+  (ctx-set! ctx :line-width 1)
+  (.requestAnimationFrame js/window (loop-game init-state)))
 
 ; (defn ^:export init! []
 ;   (draw))
